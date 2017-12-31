@@ -74,6 +74,21 @@ uint16_t Adafruit_NeoMatrix::Color(uint8_t r, uint8_t g, uint8_t b) {
                     (b         >> 3);
 }
 
+
+//-----------------------------------//  RGB24toRGB565 //-----------------------------------//
+uint16_t drawRGB24toRGB565(uint8_t  r, uint8_t  g, uint8_t  b) {
+//  return ((r / 8) << 11) | ((g / 4) << 5) | (b / 8);
+	return	(r >> 3 << 11)	| 
+			(g >> 2 << 5)	|
+			(b >> 3);
+}
+
+
+
+
+
+
+
 // Pass-through is a kludge that lets you override the current drawing
 // color with a 'raw' RGB (or RGBW) value that's issued directly to
 // pixel(s), side-stepping the 16-bit color limitation of Adafruit_GFX.
@@ -94,6 +109,118 @@ void Adafruit_NeoMatrix::setPassThruColor(uint32_t c) {
 void Adafruit_NeoMatrix::setPassThruColor(void) {
   passThruFlag = false;
 }
+
+
+
+
+
+// PWR 2015
+// at the moment no brightness setting as setpixelcolor not yet got extra bright parameter
+// and duplicate code needs stripping out to a calculatepixel function.
+void Adafruit_NeoMatrix::drawPixelRGB(int16_t x, int16_t y, uint8_t r, uint8_t g, uint8_t b, int16_t bright)
+{ if((x < 0) || (y < 0) || (x >= _width) || (y >= _height)) return;
+
+  int16_t t;
+  switch(rotation) {
+   case 1:
+    t = x;
+    x = WIDTH  - 1 - y;
+    y = t;
+    break;
+   case 2:
+    x = WIDTH  - 1 - x;
+    y = HEIGHT - 1 - y;
+    break;
+   case 3:
+    t = x;
+    x = y;
+    y = HEIGHT - 1 - t;
+    break;
+  }
+
+  int tileOffset = 0, pixelOffset;
+
+  if(remapFn) { // Custom X/Y remapping function
+    pixelOffset = (*remapFn)(x, y);
+  } else {      // Standard single matrix or tiled matrices
+
+    uint8_t  corner = type & NEO_MATRIX_CORNER;
+    uint16_t minor, major, majorScale;
+
+    if(tilesX) { // Tiled display, multiple matrices
+      uint16_t tile;
+
+      minor = x / matrixWidth;            // Tile # X/Y; presume row major to
+      major = y / matrixHeight,           // start (will swap later if needed)
+      x     = x - (minor * matrixWidth);  // Pixel X/Y within tile
+      y     = y - (major * matrixHeight); // (-* is less math than modulo)
+
+      // Determine corner of entry, flip axes if needed
+      if(type & NEO_TILE_RIGHT)  minor = tilesX - 1 - minor;
+      if(type & NEO_TILE_BOTTOM) major = tilesY - 1 - major;
+
+      // Determine actual major axis of tiling
+      if((type & NEO_TILE_AXIS) == NEO_TILE_ROWS) {
+        majorScale = tilesX;
+      } else {
+        swap(major, minor);
+        majorScale = tilesY;
+      }
+
+      // Determine tile number
+      if((type & NEO_TILE_SEQUENCE) == NEO_TILE_PROGRESSIVE) {
+        // All tiles in same order
+        tile = major * majorScale + minor;
+      } else {
+        // Zigzag; alternate rows change direction.  On these rows,
+        // this also flips the starting corner of the matrix for the
+        // pixel math later.
+        if(major & 1) {
+          corner ^= NEO_MATRIX_CORNER;
+          tile = (major + 1) * majorScale - 1 - minor;
+        } else {
+          tile =  major      * majorScale     + minor;
+        }
+      }
+
+      // Index of first pixel in tile
+      tileOffset = tile * matrixWidth * matrixHeight;
+
+    } // else no tiling (handle as single tile)
+
+    // Find pixel number within tile
+    minor = x; // Presume row major to start (will swap later if needed)
+    major = y;
+
+    // Determine corner of entry, flip axes if needed
+    if(corner & NEO_MATRIX_RIGHT)  minor = matrixWidth  - 1 - minor;
+    if(corner & NEO_MATRIX_BOTTOM) major = matrixHeight - 1 - major;
+
+    // Determine actual major axis of matrix
+    if((type & NEO_MATRIX_AXIS) == NEO_MATRIX_ROWS) {
+      majorScale = matrixWidth;
+    } else {
+      swap(major, minor);
+      majorScale = matrixHeight;
+    }
+
+    // Determine pixel number within tile/matrix
+    if((type & NEO_MATRIX_SEQUENCE) == NEO_MATRIX_PROGRESSIVE) {
+      // All lines in same order
+      pixelOffset = major * majorScale + minor;
+    } else {
+      // Zigzag; alternate rows change direction.
+      if(major & 1) pixelOffset = (major + 1) * majorScale - 1 - minor;
+      else          pixelOffset =  major      * majorScale     + minor;
+    }
+  }
+  setPixelColor(tileOffset + pixelOffset, r,g,b);
+}
+
+
+
+
+
 
 void Adafruit_NeoMatrix::drawPixel(int16_t x, int16_t y, uint16_t color) {
 
